@@ -18,8 +18,8 @@ tags_to_ignore=param::interOptWithCT, group::directories
 fn main() {
     let mut source_filepath = String::new();
     let mut destination_filepath = String::new();
-    let mut sort_key = String::new();
-    let mut value_key = String::new();
+    let mut sort_key: Option<String> = None;
+    let mut value_key: Option<String> = None;
     let mut tags_to_ignore: Vec<String> = Vec::new();
 
     if let Ok(current_dir) = current_dir() {
@@ -57,8 +57,8 @@ fn main() {
     println!("------------------------");
     println!("| Source file: {}", source_filepath);
     println!("| Destination file: {}", destination_filepath);
-    println!("| Sort field: {}", sort_key);
-    println!("| Update field: {}", value_key);
+    println!("| Sort field: {}", sort_key.as_ref().unwrap_or(&"".to_string()));
+    println!("| Update field: {}", value_key.as_ref().unwrap_or(&"".to_string()));
     println!("| Tags to ignore: ");
     tags_to_ignore.iter().for_each(|x| println!("|\t{}", x));
 
@@ -69,9 +69,6 @@ fn main() {
     if let Err(error) = std::io::stdin().read_line(&mut String::new()) {
         panic!("Unable to read from console: {}", error.description());
     }
-
-    let sort_key = Some(sort_key);
-    let value_key = Some(value_key);
 
     let parse_result = parse(
         &source_filepath,
@@ -166,6 +163,21 @@ fn parse(
                     }
                 }
             }
+            Token::Text(text) => {
+                if value_key.is_none() {
+                    let mut save_tag_value = true;
+                    for ignored_tag in tags_to_ignore {
+                        if tag_path.contains(ignored_tag.as_str()) {
+                            save_tag_value = false;
+                            break;
+                        }
+                    }
+
+                    if save_tag_value {
+                        list.push((tag_path.clone(), text.to_string()));
+                    }
+                }
+            },
             _ => {
 
             }
@@ -210,7 +222,21 @@ fn write(
                 write_on_file(&mut new_file, buffer, "Comment");
             },
             Token::Text(text) => {
-                let mut buffer = String::from(text.to_str());
+                let mut buffer = String::new();
+                if value_key.is_none() {
+                    let mut new_value = String::from(text.to_str());
+                    println!("{:?}", update_list);
+                    for (tag_to_update, value) in update_list {
+                        if tag_path.ends_with(tag_to_update) {
+                            new_value = value.clone();
+                            break;
+                        }
+                    }
+
+                    buffer.push_str(&new_value);
+                } else {
+                    buffer.push_str(text.to_str());
+                }
 
                 write_on_file(&mut new_file, buffer, "Text");
             },
@@ -244,7 +270,7 @@ fn write(
                 if let Some(ref value_key) = value_key {
                     if key.to_string() == *value_key {
                         for (tag_to_update, value) in update_list {
-                            if tag_path.contains(tag_to_update) {
+                            if tag_path.ends_with(tag_to_update) {
                                 new_value = value.clone();
                                 break;
                             }
@@ -285,9 +311,6 @@ fn write(
 
                     let value_index = tag_path.rfind("??");
                     if let Some(value_index) = value_index {
-                        // let value: String = tag_path
-                        //     .drain((value_index + 2)..)
-                        //     .collect();
                         tag_path.drain(value_index..);
                     }
 
@@ -383,8 +406,8 @@ fn parse_config_file(
     filepath: &PathBuf,
     source_filepath: &mut String,
     destination_filepath: &mut String,
-    sort_key: &mut String,
-    value_key: &mut String,
+    sort_key: &mut Option<String>,
+    value_key: &mut Option<String>,
     tags_to_ignore: &mut Vec<String>,
     ) {
     let file = match File::open(filepath) {
@@ -432,7 +455,11 @@ fn parse_config_file(
     if let Some(Ok(line)) = lines.next() {
         if line.starts_with("sort_key=") {
             if let Some(sort) = line.split("=").nth(1) {
-                *sort_key = sort.to_string();
+                if sort.chars().count() == 0 {
+                    *sort_key = None;
+                } else {
+                    *sort_key = Some(sort.to_string());
+                }
             }
         } else {
             panic!("Wrong cfg format on sort_key");
@@ -443,7 +470,11 @@ fn parse_config_file(
     if let Some(Ok(line)) = lines.next() {
         if line.starts_with("value_key=") {
             if let Some(value) = line.split("=").nth(1) {
-                *value_key = value.to_string();
+                if value.chars().count() == 0 {
+                    *value_key = None;
+                } else {
+                    *value_key = Some(value.to_string());
+                }
             }
         } else {
             panic!("Wrong cfg format on value_key");
