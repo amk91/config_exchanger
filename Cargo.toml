@@ -1,0 +1,10 @@
+[package]
+name = "config_exchanger"
+version = "0.1.0"
+authors = ["amk91 <agostino.pisanelli@gmail.com>"]
+
+[dependencies]
+xmlparser = "*"
+
+[profile.release]
+panic = 'abort'
